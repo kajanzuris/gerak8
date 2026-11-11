@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       video:
-        description: "Nama folder video di public/ (contoh: video1)"
+        description: "Nama folder video di public/ (contoh: video20)"
         required: true
-        default: "video1"
+        default: "video20"
       scale:
         description: "Skala render: 1 = 1080x1920, 0.75 = 810x1440, 0.5 = 540x960"
         required: true
@@ -37,30 +37,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
-      # Pengganti setup-ffmpeg (penyebab "fetch failed"), dengan retry
-      - name: Pasang ffmpeg
+      # 1. Cek ffmpeg (di ubuntu-latest sudah ada bawaan, jadi selesai dalam 0.1 detik)
+      - name: Cek ffmpeg
         run: |
-          if ! command -v ffmpeg >/dev/null; then
-            for i in 1 2 3; do
-              sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg && break
-              echo "Percobaan $i gagal, coba lagi..."; sleep 5
-            done
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo rm -f /etc/apt/sources.list.d/* || true
+            DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq --no-install-recommends ffmpeg
           fi
           ffmpeg -version | head -1
 
-      - name: Pasang font emoji
+      # 2. Pasang font emoji instan (1 detik via curl, TANPA apt-get update yang bikin macet)
+      - name: Pasang font emoji (Cepat)
         continue-on-error: true
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fonts-noto-color-emoji
+          if ! fc-list | grep -qi "Noto Color Emoji"; then
+            mkdir -p ~/.local/share/fonts
+            curl -sL "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf" -o ~/.local/share/fonts/NotoColorEmoji.ttf
+            fc-cache -f ~/.local/share/fonts
+          fi
+          echo "Font emoji siap!"
 
       - name: Pasang dependensi Python
         run: |
           if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
+            pip install -q -r requirements.txt
           else
-            pip install numpy scipy
+            pip install -q numpy scipy
           fi
 
       - name: Pasang dependensi npm
@@ -72,29 +77,50 @@ jobs:
           path: node_modules/.remotion
           key: remotion-browser-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Validasi input
+      - name: Validasi input & Ekstrak otomatis bila ada ZIP
         run: |
           if ! echo "$SCALE" | grep -Eq '^(0?\.[0-9]+|1(\.0+)?)$'; then
             echo "Scale tidak valid: $SCALE (isi 0.5, 0.75, atau 1)"; exit 1
           fi
           if [ ! -d "public/$VIDEO" ]; then
-            echo "Folder public/$VIDEO tidak ditemukan"; exit 1
+            echo "Folder public/$VIDEO tidak ditemukan!"; exit 1
+          fi
+          # Jika ada file .zip di dalam public/$VIDEO/, ekstrak otomatis:
+          for z in "public/$VIDEO"/*.zip; do
+            if [ -f "$z" ]; then
+              echo "Mengekstrak $z ..."
+              unzip -oq "$z" -d tmp_unzip
+              if [ -d "tmp_unzip/public" ]; then
+                cp -r tmp_unzip/public/*/* "public/$VIDEO/" 2>/dev/null || true
+              else
+                cp -r tmp_unzip/* "public/$VIDEO/" 2>/dev/null || true
+              fi
+              rm -rf tmp_unzip
+            fi
+          done
+          # Jika ada file .srt atau .mp3 dengan nama bebas, salin ke voiceover.srt / voiceover.mp3:
+          if [ ! -f "public/$VIDEO/voiceover.srt" ]; then
+            srt_any=$(find "public/$VIDEO" -maxdepth 1 -iname "*.srt" | head -n 1)
+            [ -n "$srt_any" ] && cp "$srt_any" "public/$VIDEO/voiceover.srt" || true
+          fi
+          if [ ! -f "public/$VIDEO/voiceover.mp3" ]; then
+            mp3_any=$(find "public/$VIDEO" -maxdepth 1 -iname "*.mp3" | head -n 1)
+            [ -n "$mp3_any" ] && cp "$mp3_any" "public/$VIDEO/voiceover.mp3" || true
           fi
 
-      # Jaring pengaman: ubah tab jadi 4 spasi HANYA di runner (tidak di-commit)
       - name: Normalkan indentasi Python
         run: |
           sed -i 's/\t/    /g' tools/*.py
           python3 -m py_compile tools/*.py
 
-      - name: Validasi scenes.src.json + mp3/srt
+      - name: Validasi scenes.src.json + mp3/srt/video
         run: python3 tools/validate_scenes.py "$VIDEO"
 
       - name: Unduh gambar objek (visuals)
         continue-on-error: true
         run: python3 tools/visualize.py "$VIDEO"
 
-      - name: Siapkan (timing SRT, lip-sync, musik, SFX)
+      - name: Siapkan (sambung klip video, timing SRT, lip-sync, musik, SFX)
         run: python3 tools/prepare.py "$VIDEO"
 
       - name: Render
