@@ -38,17 +38,23 @@ jobs:
         with:
           python-version: "3.12"
 
-      # 1. Cek ffmpeg (di ubuntu-latest sudah ada bawaan, selesai 0.1 detik)
-      - name: Cek ffmpeg
+      # 1. Pasang ffmpeg super cepat (ambil biner langsung 2 detik; cadangan apt-get tanpa man-db)
+      - name: Pasang ffmpeg (Cepat)
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo rm -f /etc/apt/sources.list.d/* || true
+            echo "Mengunduh ffmpeg static..."
+            curl -sL --retry 3 "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" -o /tmp/ffmpeg.tar.xz && \
+            sudo tar -xJf /tmp/ffmpeg.tar.xz -C /usr/local/bin --strip-components=2 --wildcards "*/bin/ffmpeg" "*/bin/ffprobe" && \
+            rm -f /tmp/ffmpeg.tar.xz || true
+          fi
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo rm -f /var/lib/man-db/auto-update || true
             DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq
             DEBIAN_FRONTEND=noninteractive sudo apt-get install -y -qq --no-install-recommends ffmpeg
           fi
           ffmpeg -version | head -1
 
-      # 2. Pasang font emoji instan (1 detik via curl, TANPA apt-get update)
+      # 2. Pasang font emoji instan (1 detik via curl, TANPA apt-get)
       - name: Pasang font emoji (Cepat)
         continue-on-error: true
         run: |
