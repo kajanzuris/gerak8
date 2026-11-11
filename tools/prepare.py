@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""
+Persiapan video SEBELUM render. Jalankan dari root repo:
+
+    python3 tools/prepare.py video1
+
+Butuh: public/<video>/scenes.src.json (atau scenes.json), voiceover.mp3 (atau potongan video .mp4 di clips/), dan voiceover.srt.
+Menghasilkan:
+  public/<video>/source.mp4   -> gabungan potongan video .mp4 yang sudah dinormalisasi ke 1080x1920 30fps (bila ada klip video)
+  public/<video>/scenes.json  -> start tiap adegan + waktu tiap kata mengikuti SRT, durasi otomatis
+  public/<video>/env.json     -> kerasnya suara per frame (lip-sync)
+  public/<video>/mix.wav      -> suara + musik (di-duck di bawah suara) + SFX, -14 LUFS
+Butuh ffmpeg, python3, numpy, scipy.
+"""
+import difflib, json, math, os, re, shutil, subprocess, sys
+import numpy as np
+
+name = sys.argv[1] if len(sys.argv) > 1 else 'video1'
+D = f'public/{name}'
+FPS, XF = 30, 10
+TAIL = float(os.environ.get('TAIL', 2.0))          # jeda penutup setelah suara selesai (untuk CTA)
+FF = shutil.which('ffmpeg') or 'ffmpeg'
+os.makedirs('tmp', exist_ok=True)
+
+def run(a): return subprocess.run(a, capture_output=True, text=True)
+def dur_of(p):
+    r = run([FF, '-hide_banner', '-i', p]).stderr
+    m = re.search(r'Duration: (\d+):(\d+):([\d.]+)', r)
+    if not m: return 10.0
+    h, mm, s = m.groups()
+    return int(h) * 3600 + int(mm) * 60 + float(s)
+
+# ---------- 1. sumber adegan
+src = f'{D}/scenes.src.json'
+if not os.path.exists(src):
+    shutil.copy(f'{D}/scenes.json', src)           # simpan salinan asli sekali saja
+data = json.load(open(src, encoding='utf-8'))
+scenes = data['scenes']
+
+# ---------- 1b. Gabungkan potongan video Google Flow (.mp4) beserta SUARA ASLINYA secara berurutan
+clips_dir = f'{D}/clips'
+clip_files = []
+if os.path.isdir(clips_dir):
+    clip_files = [f'{clips_dir}/{f}' for f in os.listdir(clips_dir) if f.lower().endswith('.mp4')]
+if not clip_files:
+    clip_files = [f'{D}/{f}' for f in os.listdir(D) if f.lower().endswith('.mp4') and f.lower() not in ('source.mp4', 'out.mp4')]
+
+# Urutkan sesuai nomor (clip01.mp4, clip02.mp4 ... atau 1.mp4, 2.mp4 ... 6.mp4)
+clip_files.sort(key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', os.path.basename(s))])
+
+src_mp4 = f'{D}/source.mp4'
+mp3 = f'{D}/voiceover.mp3'
+
+if clip_files:
+    print(f'Menggabungkan {len(clip_files)} klip video + suara asli: {[os.path.basename(c) for c in clip_files]}')
+    norm_vids = []
+    norm_auds = []
+    for idx_c, cp in enumerate(clip_files):
+        d_clip = dur_of(cp)
+        info_c = run([FF, '-hide_banner', '-i', cp]).stderr
+        has_aud = 'Audio:' in info_c
+
+        # 1. Normalisasi visual tiap klip ke 1080x1920 30fps
+        nv = f'tmp/clip_v_{idx_c:02d}.mp4'
+        pad_v = ',tpad=stop_mode=clone:stop_duration=5' if idx_c == len(clip_files) - 1 else ''
+        vf = f'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps={FPS},format=yuv420p{pad_v}'
+        subprocess.run([FF, '-y', '-loglevel', 'error', '-i', cp, '-vf', vf, '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', nv], check=True)
+        norm_vids.append(nv)
+
+        # 2. Ekstrak suara asli tiap klip dengan durasi persis sama (jika klip bisu, isi hening sepanjang d_clip)
+        na = f'tmp/clip_a_{idx_c:02d}.wav'
+        if has_aud:
+            af = f'aresample=44100:async=1,apad=whole_dur={d_clip},atrim=0:{d_clip}'
+            subprocess.run([FF, '-y', '-loglevel', 'error', '-i', cp, '-vn', '-af', af, '-ar', '44100', '-ac', '2', na], check=True)
+        else:
+            subprocess.run([FF, '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', str(d_clip), na], check=True)
+        norm_auds.append(na)
+
+    # 3. Sambung seluruh visual menjadi source.mp4
+    v_list = 'tmp/v_concat.txt'
+    with open(v_list, 'w', encoding='utf-8') as vf_out:
+        for nv in norm_vids:
+            vf_out.write(f"file '{os.path.abspath(nv)}'\n")
+    subprocess.run([FF, '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', v_list, '-c', 'copy', src_mp4], check=True)
+
+    # 4. Sambung seluruh suara asli klip menjadi voiceover.mp3 (jika user tidak upload voiceover.mp3 terpisah)
+    if not os.path.exists(mp3):
+        a_list = 'tmp/a_concat.txt'
+        with open(a_list, 'w', encoding='utf-8') as af_out:
+            for na in norm_auds:
+                af_out.write(f"file '{os.path.abspath(na)}'\n")
+        subprocess.run([FF, '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', a_list, '-c:a', 'libmp3lame', '-q:a', '2', mp3], check=True)
+        print('Suara gabungan dari seluruh klip video berhasil dijadikan voiceover.mp3 (Acuan Utama)')
+
+if os.path.exists(src_mp4):
+    data['hasVideo'] = True
+    data['videoSrc'] = 'source.mp4'
+    if not os.path.exists(mp3):
+        subprocess.run([FF, '-y', '-loglevel', 'error', '-i', src_mp4, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', mp3], check=False)
+
+# ---------- 2. SRT -> waktu tiap kata
+def ts(x):
+    hh, mm, rest = x.split(':'); ss, ms = rest.replace(',', '.').split('.')
+    return int(hh) * 3600 + int(mm) * 60 + int(ss) + int(ms.ljust(3, '0')[:3]) / 1000
+def parse_srt(t):
+    out = []
+    for blk in re.split(r'\n\s*\n', t.strip().replace('\r', '')):
+        ln = blk.split('\n'); i = next((k for k, l in enumerate(ln) if '-->' in l), None)
+        if i is None: continue
+        a, b = [ts(x.strip()) for x in ln[i].split('-->')]
+        out.append((a, b, ' '.join(ln[i + 1:]).strip()))
+    return out
+
+srt_path = f'{D}/voiceover.srt'
+srt = parse_srt(open(srt_path, encoding='utf-8').read()) if os.path.exists(srt_path) else []
+VO = dur_of(mp3) if os.path.exists(mp3) else (srt[-1][1] if srt else float(data.get('durationInFrames', 900)) / FPS)
+if not os.path.exists(mp3): print('PERINGATAN: voiceover.mp3 tidak ada, mix.wav hanya berisi musik + SFX')
+SPEECH_END = srt[-1][1] if srt else VO
+
+norm = lambda w: re.sub(r'[^a-z0-9]', '', w.lower())
+toks = [(si, t) for si, s in enumerate(scenes) for t in s['title'].split()]      # kata tampil di layar
+if srt:
+    sw = []                                                                         # kata SRT + waktu (kalimat akurat, kata = estimasi)
+    for a, b, t in srt:
+        ws = t.split(); tot = sum(len(w) + 1 for w in ws) or 1; x = a
+        for w in ws:
+            d = (b - a) * (len(w) + 1) / tot; sw.append((w, x, x + d)); x += d
+    A = [norm(w) for w, _, _ in sw]; B = [norm(t.replace('*', '')) for _, t in toks]
+    times = [None] * len(B)
+    for blk in difflib.SequenceMatcher(None, A, B, autojunk=False).get_matching_blocks():
+        for k in range(blk.size): times[blk.b + k] = (sw[blk.a + k][1], sw[blk.a + k][2])
+    known = [i for i, t in enumerate(times) if t]
+    if not known: times = [(i * SPEECH_END / len(B), (i + 1) * SPEECH_END / len(B)) for i in range(len(B))]
+    else:                                                                           # isi kata yang tidak cocok dengan interpolasi
+        prev_end, i = 0.0, 0
+        while i < len(B):
+            if times[i]: prev_end = times[i][1]; i += 1; continue
+            j = i
+            while j < len(B) and not times[j]: j += 1
+            nxt = times[j][0] if j < len(B) else SPEECH_END
+            step = (nxt - prev_end) / (j - i)
+            for k in range(i, j): times[k] = (prev_end + (k - i) * step, prev_end + (k - i + 1) * step)
+            i = j
+    cover = len(known) / max(1, len(B))
+    print(f'sinkron SRT: {len(known)}/{len(B)} kata cocok persis ({cover:.0%}), sisanya diinterpolasi')
+else:
+    print('PERINGATAN: voiceover.srt tidak ada; waktu kata diperkirakan dari start di scenes.src.json')
+    times = []
+    for si, s in enumerate(scenes):
+        a = s['start']; b = scenes[si + 1]['start'] if si + 1 < len(scenes) else VO
+        ws = [t for i, t in toks if i == si]; tot = sum(len(w) + 2 for w in ws) or 1; x = a
+        for w in ws: d = (b - a) * (len(w) + 2) / tot; times.append((x, x + d)); x += d
+
+words = [dict(w=t.replace('*', ''), hl='*' in t, a=round(a, 3), b=round(b, 3), s=si) for (si, t), (a, b) in zip(toks, times)]
+first_idx = {}
+for k, w in enumerate(words): first_idx.setdefault(w['s'], k)
+prev = 0.0
+for si, s in enumerate(scenes):                                                     # adegan mulai tepat saat kata pertamanya diucapkan
+    st = 0.0 if si == 0 else max(prev + 0.8, words[first_idx[si]]['a'] - 0.05)
+    s['start'] = round(st, 3); prev = st
+
+for si, s in enumerate(scenes):                                                     # gambar objek muncul saat katanya diucapkan
+    for pc in s.get('pics', []):
+        key = norm(pc.get('word', ''))
+        hit = next((w for w in words if w['s'] == si and key and norm(w['w']).startswith(key)), None)
+        pc['at'] = round(hit['a'], 3) if hit else s['start']
+
+# ---------- 2b. transisi per adegan (satu sumber untuk gambar DAN suara) + pengaturan audio
+AUD = data.get('audio') or {}
+USE_MUSIC, USE_SFX, USE_BLOCKSFX = AUD.get('music', True), AUD.get('sfx', True), AUD.get('blockSfx', True)
+EXPLAINER = data.get('style') == 'explainer'
+HUD = EXPLAINER and data.get('theme') == 'hud'
+EDITOR = EXPLAINER and (data.get('theme') == 'editor' or data.get('hasVideo') is True)
+T_OK = ('fade', 'slide-left', 'slide-up', 'zoom', 'wipe', 'none')
+T_LIST = [x for x in (data.get('transitions') or []) if x in T_OK]
+def trans_kind(i, s):
+    if i == 0: return 'none'
+    if s.get('transition') in T_OK: return s['transition']
+    if not T_LIST: return 'none'
+    r = abs(math.sin((i + 1) * 12.9898) * 43758.5453) % 1
+    return T_LIST[int(r * len(T_LIST)) if data.get('transitionsMode') == 'random' else i % len(T_LIST)]
+if EXPLAINER:                                                                       # renderer membaca "transition" per adegan ini
+    for i, s in enumerate(scenes): s['transition'] = trans_kind(i, s)
+
+DUR = math.ceil((max(VO, SPEECH_END) + TAIL) * FPS) / FPS
+data['durationInFrames'] = int(round(DUR * FPS)); data['words'] = words; data['music'] = False
+json.dump(data, open(f'{D}/scenes.json', 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+print('durasi', DUR, 'dtk =', data['durationInFrames'], 'frame;', len(scenes), 'adegan:', [s['start'] for s in scenes])
+if EXPLAINER: print('transisi:', [s['transition'] for s in scenes])
+
+# ---------- 3. lip-sync: kerasnya suara per frame
+env = [0.0] * data['durationInFrames']
+if os.path.exists(mp3):
+    raw = subprocess.run([FF, '-v', 'error', '-i', mp3, '-ac', '1', '-ar', '16000', '-f', 's16le', '-'], capture_output=True).stdout
+    x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768
+    n = 16000 // FPS; k = len(x) // n
+    rms = np.sqrt(np.mean(x[:k * n].reshape(k, n) ** 2, axis=1))
+    ref = np.percentile(rms[rms > 0.01], 95) if np.any(rms > 0.01) else 1.0
+    e = np.clip(rms / ref, 0, 1) ** 0.8
+    e = np.convolve(e, [0.25, 0.5, 0.25], mode='same')
+    for i in range(min(k, len(env))): env[i] = round(float(e[i]), 2)
+json.dump(env, open(f'{D}/env.json', 'w'))
+
+# ---------- 4. musik bed + SFX terikat adegan (cues untuk tools/make_audio.py)
+seq = lambda s: max(0.0, s['start'] - (XF / FPS if s is not scenes[0] else 0))       # awal Sequence adegan
+TSFX = {
+    'slide-left': dict(type='whoosh', d=.45, f0=300, f1=5200, pan=-.3, gain=.5),
+    'slide-up':   dict(type='whoosh', d=.45, f0=700, f1=7000, pan=0, gain=.5),
+    'wipe':       dict(type='whoosh', d=.4, f0=4500, f1=500, pan=.3, gain=.45),
+    'zoom':       dict(type='rise', d=.45, f0=250, f1=1100, gain=1.0),
+    'fade':       dict(type='shimmer', d=.6, gain=1.0),
+}
+sfx = [dict(t=0.0, type='pop', gain=.5)]
+for i, s in enumerate(scenes):
+    if i == 0: continue
+    if not EXPLAINER:
+        sfx += [dict(t=round(max(0, s['start'] - .32), 3), type='whoosh', d=.5, gain=.5), dict(t=s['start'], type='thud', gain=.3)]
+        continue
+    k = trans_kind(i, s)
+    if k in TSFX:
+        sfx.append(dict(t=round(max(0, s['start'] - .05), 3), **TSFX[k]))
+        if k in ('zoom', 'wipe'): sfx.append(dict(t=round(s['start'] + .2, 3), type='pop', gain=.3))
+    else:
+        sfx.append(dict(t=s['start'], type='thud', gain=.3))
+
+# Tambahan SFX khusus saat video mengecil/membelah layar (mode editor)
+if EDITOR:
+    for si, s in enumerate(scenes):
+        if s.get('vidLayout') == 'full': continue
+        ws_s = [w for w in words if w['s'] == si]
+        trig_w = s.get('triggerWord') or ''
+        k_trig = norm(trig_w)
+        hit = next((w for w in ws_s if k_trig and norm(w['w']).startswith(k_trig)), None)
+        if not hit:
+            hit = next((w for w in ws_s if w.get('hl')), None)
+        t_split = hit['a'] if hit else (s['start'] + 0.25)
+        sfx += [
+            dict(t=round(max(0, t_split - 0.04), 3), type='whoosh', d=.38, f0=400, f1=4800, gain=.45),
+            dict(t=round(t_split + 0.08, 3), type='pop', gain=.4),
+        ]
+
+for s in scenes:
+    c = s.get('card'); q = seq(s)
+    if c and c.get('type') == 'list':
+        for i in range(len(c.get('items', []))): sfx.append(dict(t=round(q + (10 + i * 10) / FPS, 3), type='pop', gain=.5))
+    if c and c.get('type') == 'stat':
+        sfx += [dict(t=round(q + 4 / FPS, 3), type='ticks', d=1.2, step=.08, gain=.5),
+                dict(t=round(q + 40 / FPS, 3), type='thud', gain=.7), dict(t=round(q + 40 / FPS, 3), type='bell', f=1318, gain=.4)]
+    if s.get('prop') == 'confetti': sfx += [dict(t=round(s['start'] + .1, 3), type='impact', gain=.4), dict(t=round(s['start'] + .2, 3), type='sparkle')]
+    pq = s['start'] if EXPLAINER else q
+    if s.get('prop') == 'rocket': sfx.append(dict(t=round(pq + .05, 3), type='rise', d=.6, f0=200, f1=1400, gain=.7))
+    if s.get('prop') == 'chart': sfx.append(dict(t=round(pq + .1, 3), type='ticks', d=.8, step=.1, gain=.4))
+    if s.get('prop') == 'lock': sfx.append(dict(t=round(pq + .65, 3), type='thud', gain=.5))
+if EXPLAINER and USE_BLOCKSFX:
+    for si, s in enumerate(scenes):
+        ws_s = [w for w in words if w['s'] == si]
+        for bi, b in enumerate(s.get('stage') or []):
+            if b.get('hold'): continue
+            at = b.get('at'); t0 = s['start'] + .05 + bi * .35
+            if isinstance(at, (int, float)): t0 = s['start'] + at
+            elif isinstance(at, str):
+                kk = norm(at); h = next((w for w in ws_s if kk and norm(w['w']).startswith(kk)), None)
+                if h: t0 = h['a']
+            t0 = min(t0, s['start'] + .45)
+            sfx.append(dict(t=round(t0, 3), type='plink' if b.get('type') in ('stat', 'callout') else 'pop', gain=.35))
+            ty = b.get('type')
+            if ty == 'terminal':
+                cur = t0 + .4
+                for l in (b.get('lines') or [])[:8]:
+                    txt = str(l.get('text', '')); kind = l.get('k') or ('cmd' if txt.strip().startswith('$') else 'out')
+                    d = min(1.6, max(.4, len(txt) / 40)) if kind == 'cmd' else .2
+                    if kind == 'cmd': sfx.append(dict(t=round(cur, 3), type='ticks', d=round(d, 2), step=.06, gain=.25))
+                    if kind == 'ok': sfx.append(dict(t=round(cur, 3), type='plink', gain=.25))
+                    cur += d + (.3 if kind == 'cmd' else .15)
+            elif ty == 'phone':
+                for ri in range(len((b.get('rows') or [])[:6])): sfx.append(dict(t=round(t0 + .5 + ri * .7, 3), type='pop', gain=.25))
+            elif ty == 'tiles':
+                for ci in range(1, len((b.get('cols') or [])[:4])): sfx.append(dict(t=round(t0 + ci * .3, 3), type='pop', gain=.25))
+            elif ty == 'notifs':
+                for ni in range(1, len((b.get('notifs') or [])[:4])): sfx.append(dict(t=round(t0 + ni * .55, 3), type='plink', gain=.3))
+            elif ty == 'icons':
+                for ii in range(1, len((b.get('icons') or [])[:3])): sfx.append(dict(t=round(t0 + ii * .35, 3), type='pop', gain=.3))
+            elif ty == 'kpi' and b.get('value'):
+                sfx += [dict(t=round(t0 + .2, 3), type='ticks', d=1.3, step=.08, gain=.35), dict(t=round(t0 + 1.5, 3), type='bell', f=1318, gain=.25)]
+if HUD:
+    for si, s in enumerate(scenes):
+        sfx.append(dict(t=round(s['start'] + .1, 3), type='ticks', d=.55, step=.05, gain=.22))
+        if si: sfx.append(dict(t=round(s['start'] + .05, 3), type='plink', gain=.3))
+if data.get('cta'): sfx += [dict(t=round(DUR - 2.0, 3), type='sparkle'), dict(t=round(DUR - 2.0, 3), type='pop', gain=.6)]
+if not USE_SFX: sfx = []
+music = dict(profile='bed', bpm=100, bars=['C', 'G', 'Am', 'F'], breaks=[], arp_from=2.0, hat_from=4.0, clap_from=999, final=round(max(DUR - 1.6, 1.0), 3))
+json.dump(dict(dur=DUR, fps=FPS, sfx=sfx, music=music), open('tools/cues.json', 'w'), indent=1)
+r = run([sys.executable, 'tools/make_audio.py', '--bed']); print(r.stdout.strip() or r.stderr[-400:])
+
+# ---------- 5. mix dengan ducking: suara menang, musik turun saat bicara
+if os.path.exists(mp3):
+    subprocess.run([FF, '-y', '-loglevel', 'error', '-i', mp3, '-vn', '-ar', '44100', '-ac', '2', '-af', 'highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=7', 'tmp/vo.wav'], check=True)
+else:
+    subprocess.run([FF, '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', f'anullsrc=r=44100:cl=stereo', '-t', str(DUR), 'tmp/vo.wav'], check=True)
+fg = (f'[0:a]apad=whole_dur={DUR},asplit=2[vo][sc];[1:a]volume={0.65 if USE_MUSIC else 0.0}[bed];[bed][sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500:makeup=1[d0];'
+      f'[d0]asplit=2[duck][dchk];[2:a]volume=0.5[fx];[vo][duck][fx]amix=inputs=3:duration=longest[o]')
+subprocess.run([FF, '-y', '-loglevel', 'error', '-i', 'tmp/vo.wav', '-i', 'tmp/bed.wav', '-i', 'tmp/sfx.wav', '-filter_complex', fg,
+                '-map', '[o]', '-t', str(DUR), '-ar', '44100', 'tmp/raw_mix.wav', '-map', '[dchk]', '-t', str(DUR), 'tmp/duck_only.wav'], check=True)
+subprocess.run([FF, '-y', '-loglevel', 'error', '-i', 'tmp/raw_mix.wav', '-af', 'loudnorm=I=-14:TP=-2.5:LRA=11', '-ar', '44100', f'{D}/mix.wav'], check=True)
+
+# ---------- 6. cek angka (kita tidak "mendengar", jadi ukur)
+if os.path.exists(mp3) and USE_MUSIC:
+    from scipy.io import wavfile
+    def load(p):
+        sr, a = wavfile.read(p); a = a.astype(np.float32) / 32768
+        return sr, (a.mean(axis=1) if a.ndim > 1 else a)
+    sr, vo = load('tmp/vo.wav'); _, bd = load('tmp/duck_only.wav'); m = min(len(vo), len(bd)); vo, bd = vo[:m], bd[:m]
+    W = int(.5 * sr); kk = m // W
+    rv = np.array([np.sqrt(np.mean(vo[i*W:(i+1)*W] ** 2)) + 1e-9 for i in range(kk)]); rb = np.array([np.sqrt(np.mean(bd[i*W:(i+1)*W] ** 2)) + 1e-9 for i in range(kk)])
+    sp = rv > np.percentile(rv, 40)
+    print('ducking: suara vs musik saat bicara = %.1f dB (target 10-16)' % (20 * np.log10(rv[sp].mean()) - 20 * np.log10(rb[sp].mean())))
+r = run([FF, '-nostats', '-i', f'{D}/mix.wav', '-af', 'ebur128=peak=true', '-f', 'null', '-']).stderr
+print('loudness:', ' | '.join(l.strip() for l in r.splitlines() if re.match(r'\s*(I:|Peak:)', l))[-80:])
+print(f'SELESAI -> {D}/mix.wav, {D}/scenes.json, {D}/env.json')

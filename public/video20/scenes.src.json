@@ -1,0 +1,161 @@
+{
+  "style": "explainer",
+  "brand": "TerusTahu",
+  "tag": "Tips & Trik",
+  "scenes": [
+    {
+      "title": "*Kalau* kamu masih *kepikiran* omongan tetangga pas mau mulai jualan,",
+      "start": 0,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img01.png",
+          "h": 960
+        }
+      ],
+      "pops": [
+        {
+          "word": "mulai",
+          "glyph": "🚀",
+          "anim": "slide-right",
+          "x": 930,
+          "s": 0.95
+        }
+      ]
+    },
+    {
+      "title": "coba *berhenti* *dulu* deh mikirin itu.",
+      "start": 4.2,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img02.png",
+          "h": 960
+        }
+      ]
+    },
+    {
+      "title": "*Mending* kamu *fokus* aja ke satu orang yang memang butuh solusi dari",
+      "start": 6.6,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img03.png",
+          "h": 960
+        }
+      ],
+      "pops": [
+        {
+          "word": "solusi",
+          "glyph": "💡",
+          "anim": "pop",
+          "x": 180,
+          "s": 0.75
+        }
+      ]
+    },
+    {
+      "title": "kamu. *Terus,* coba *tawarin* lewat WhatsApp ke teman dekat kamu dulu ya.",
+      "start": 10.7,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img04.png",
+          "h": 960
+        }
+      ],
+      "pops": [
+        {
+          "word": "teman",
+          "glyph": "🤝",
+          "anim": "pop",
+          "x": 910,
+          "s": 0.9
+        }
+      ]
+    },
+    {
+      "title": "*Pakai* *bahasa* yang jujur aja biar nggak kerasa kaku.",
+      "start": 15.5,
+      "small": 1,
+      "stage": []
+    },
+    {
+      "title": "*Nanti* kamu *bakal* kaget lho,",
+      "start": 18.9,
+      "small": 0,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img05.png",
+          "h": 960
+        }
+      ]
+    },
+    {
+      "title": "*ternyata* *jualan* itu sesimpel bantu orang lain.",
+      "start": 20.7,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img06.png",
+          "h": 960
+        }
+      ],
+      "pops": [
+        {
+          "word": "jualan",
+          "glyph": "🛒",
+          "anim": "pop",
+          "x": 160,
+          "s": 0.85
+        }
+      ]
+    },
+    {
+      "title": "*Simpan* *video* ini ya biar kamu nggak ragu lagi.",
+      "start": 23.8,
+      "small": 1,
+      "stage": [
+        {
+          "type": "callout",
+          "title": "TerusTahu",
+          "sub": "",
+          "cta": ""
+        }
+      ]
+    }
+  ],
+  "header": true,
+  "accent": "#e5252a",
+  "charColor": "#222222",
+  "cta": "ikuti akun ini buat info lainnya",
+  "charStyle": "stick",
+  "transitions": [
+    "fade",
+    "slide-left",
+    "slide-up",
+    "zoom",
+    "wipe"
+  ],
+  "transitionsMode": "random",
+  "backgrounds": [
+    "cream",
+    "mint",
+    "sunset",
+    "grid"
+  ],
+  "bgMode": "auto",
+  "bgEvery": 1,
+  "theme": "clean",
+  "audio": {
+    "music": true,
+    "sfx": true,
+    "blockSfx": true
+  }
+}
