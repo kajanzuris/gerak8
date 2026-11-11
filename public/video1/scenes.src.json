@@ -1,0 +1,271 @@
+{
+  "style": "explainer",
+  "brand": "TerusTahu",
+  "tag": "Tips & Trik",
+  "scenes": [
+    {
+      "title": "Ini yang aku *harap* *diajarin* dari dulu",
+      "start": 0,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img01.png",
+          "h": 700
+        }
+      ],
+      "triggerWord": "harap",
+      "vidLayout": "split-top"
+    },
+    {
+      "title": "*soal* *berani* jualan. Eh, dengerin dulu, nah.",
+      "start": 2.5,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img02.png",
+          "h": 700
+        }
+      ],
+      "pops": [
+        {
+          "word": "berani",
+          "glyph": "💪",
+          "anim": "pop",
+          "x": 940,
+          "s": 0.75,
+          "object": "a flexed strong arm",
+          "img": "pics/pop01.png"
+        }
+      ],
+      "triggerWord": "berani",
+      "vidLayout": "shrink-left"
+    },
+    {
+      "title": "Coba *mulai* dari *barang* yang kamu punya di rumah aja.",
+      "start": 5,
+      "small": 1,
+      "stage": [
+        {
+          "type": "window",
+          "title": "Rencana",
+          "tone": "#1f9d8a",
+          "rows": [
+            {
+              "k": "check",
+              "state": "done",
+              "text": "Coba mulai dari"
+            },
+            {
+              "k": "check",
+              "state": "todo",
+              "text": "barang yang kamu"
+            }
+          ]
+        }
+      ],
+      "pops": [
+        {
+          "word": "mulai",
+          "glyph": "🚀",
+          "anim": "slide-right",
+          "x": 170,
+          "s": 0.95,
+          "object": "a rocket flying upward",
+          "img": "pics/pop02.png"
+        },
+        {
+          "word": "barang",
+          "glyph": "📦",
+          "anim": "pop",
+          "x": 930,
+          "s": 0.95,
+          "object": "a cardboard package box",
+          "img": "pics/pop03.png"
+        },
+        {
+          "word": "rumah",
+          "glyph": "🏠",
+          "anim": "pop",
+          "x": 160,
+          "s": 0.85,
+          "object": "a small cozy house",
+          "img": "pics/pop04.png"
+        }
+      ],
+      "triggerWord": "mulai",
+      "vidLayout": "split-bottom"
+    },
+    {
+      "title": "*Terus,* *fokusnya* bantuin masalah orang,",
+      "start": 8.2,
+      "small": 0,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img03.png",
+          "h": 700
+        }
+      ],
+      "pops": [
+        {
+          "word": "masalah",
+          "glyph": "⚠️",
+          "anim": "pop",
+          "x": 930,
+          "s": 0.95,
+          "object": "a warning triangle sign",
+          "img": "pics/pop05.png"
+        }
+      ],
+      "triggerWord": "masalah",
+      "vidLayout": "shrink-right"
+    },
+    {
+      "title": "bukan *cuma* *mikirin* untung. Terakhir, tawarin aja dulu",
+      "start": 11.5,
+      "small": 1,
+      "stage": [
+        {
+          "type": "compare",
+          "left": {
+            "title": "Dulu",
+            "tone": "#3b6fd8",
+            "items": [
+              "Bicara"
+            ]
+          },
+          "right": {
+            "title": "Sekarang",
+            "tone": "#1f9d8a",
+            "items": [
+              "Mendengar"
+            ]
+          }
+        }
+      ],
+      "pops": [
+        {
+          "word": "untung",
+          "glyph": "💰",
+          "anim": "drop",
+          "x": 170,
+          "s": 0.95,
+          "object": "a bag of money with gold coins",
+          "img": "pics/pop06.png"
+        }
+      ],
+      "triggerWord": "untung",
+      "vidLayout": "split-top"
+    },
+    {
+      "title": "*lewat* *status* WhatsApp ke temen deket.",
+      "start": 14,
+      "small": 1,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img04.png",
+          "h": 700
+        }
+      ],
+      "pops": [
+        {
+          "word": "temen",
+          "glyph": "🤝",
+          "anim": "pop",
+          "x": 930,
+          "s": 0.95,
+          "object": "two hands shaking",
+          "img": "pics/pop07.png"
+        }
+      ],
+      "triggerWord": "temen",
+      "vidLayout": "shrink-left"
+    },
+    {
+      "title": "*Nanti* kamu *bakal* kaget ternyata jualan itu",
+      "start": 17.5,
+      "small": 1,
+      "stage": [],
+      "pops": [
+        {
+          "word": "jualan",
+          "glyph": "🛒",
+          "anim": "pop",
+          "x": 160,
+          "s": 0.85,
+          "object": "a shopping cart",
+          "img": "pics/pop08.png"
+        }
+      ],
+      "triggerWord": "jualan",
+      "vidLayout": "split-bottom"
+    },
+    {
+      "title": "nggak *semenakutkan* *bayanganmu.*",
+      "start": 20.5,
+      "small": 0,
+      "stage": [
+        {
+          "type": "image",
+          "src": "img/img05.png",
+          "h": 700
+        }
+      ],
+      "triggerWord": "semenakutkan",
+      "vidLayout": "shrink-right"
+    },
+    {
+      "title": "*Simpen* *video* ini ya, biar kamu nggak ragu lagi",
+      "start": 24,
+      "small": 1,
+      "stage": [],
+      "triggerWord": "Simpen",
+      "vidLayout": "full"
+    },
+    {
+      "title": "*buat* *melangkah* hari ini.",
+      "start": 27.5,
+      "small": 0,
+      "stage": [
+        {
+          "type": "callout",
+          "title": "TerusTahu",
+          "sub": "",
+          "cta": ""
+        }
+      ],
+      "triggerWord": "buat",
+      "vidLayout": "split-top"
+    }
+  ],
+  "header": true,
+  "accent": "#e5252a",
+  "charColor": "#222222",
+  "cta": "Follow",
+  "charStyle": "block",
+  "transitions": [
+    "fade",
+    "slide-left",
+    "slide-up",
+    "zoom"
+  ],
+  "transitionsMode": "random",
+  "backgrounds": [
+    "cream",
+    "sky",
+    "paper",
+    "navy"
+  ],
+  "bgMode": "single",
+  "bgEvery": 1,
+  "theme": "editor",
+  "audio": {
+    "music": false,
+    "sfx": true,
+    "blockSfx": true
+  },
+  "hasVideo": true
+}
