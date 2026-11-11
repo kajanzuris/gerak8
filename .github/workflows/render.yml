@@ -37,9 +37,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      # 1. Cek ffmpeg (di ubuntu-latest sudah ada bawaan, jadi selesai dalam 0.1 detik)
+      # 1. Cek ffmpeg (di ubuntu-latest sudah ada bawaan, selesai 0.1 detik)
       - name: Cek ffmpeg
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -49,7 +48,7 @@ jobs:
           fi
           ffmpeg -version | head -1
 
-      # 2. Pasang font emoji instan (1 detik via curl, TANPA apt-get update yang bikin macet)
+      # 2. Pasang font emoji instan (1 detik via curl, TANPA apt-get update)
       - name: Pasang font emoji (Cepat)
         continue-on-error: true
         run: |
